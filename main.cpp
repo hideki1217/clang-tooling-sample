@@ -2,6 +2,9 @@
 
 #include "lib.hpp"
 
+__global__ void aaaaa(int, int, int, int, int, int, int,
+                      double (*)(double, double));
+
 __global__ int sub(int x, int y) { return x - y; }
 __global__ int mul(int x, int y) { return x * y; }
 __global__ int muladd(int n, int *x, int *y) {

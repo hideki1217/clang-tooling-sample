@@ -1,6 +1,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -11,23 +12,12 @@ using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 
-#include "clang/AST/AST.h"
-#include "clang/AST/Attr.h"
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/Lexer.h"
-#include "llvm/Support/raw_ostream.h"
-
-using namespace clang;
-using namespace clang::ast_matchers;
-
 class SpecialFuncPrinter : public MatchFinder::MatchCallback {
 public:
   void run(const MatchFinder::MatchResult &Result) override {
     const FunctionDecl *FD =
         Result.Nodes.getNodeAs<FunctionDecl>("specialFunc");
-    if (!FD || !FD->hasBody())
+    if (!FD)
       return;
 
     // annotate("special") チェック
@@ -46,49 +36,92 @@ public:
     const SourceManager &SM = *Result.SourceManager;
     const LangOptions &LangOpts = Result.Context->getLangOpts();
 
-    // 関数宣言の出力
-    SourceLocation FuncBegin = FD->getBeginLoc();
-    const Stmt *Body = FD->getBody();
-    if (FuncBegin.isValid() && Body->getBeginLoc().isValid()) {
-      SourceLocation DeclLoc = SM.getFileLoc(FuncBegin);
-      unsigned DeclLine = SM.getSpellingLineNumber(DeclLoc);
-      llvm::outs() << "#line " << DeclLine << " \"" << SM.getFilename(DeclLoc)
-                   << "\"\n";
+    auto printLineDirective = [&](SourceLocation loc) {
+      unsigned LineNo = SM.getSpellingLineNumber(loc);
+      const auto FileName = SM.getFilename(loc);
+      llvm::outs() << "#line " << LineNo << " \"" << FileName << "\"\n";
+    };
 
+    if (FD->hasBody()) {
+      bool Invalid;
+      SourceLocation FuncBegin = FD->getBeginLoc();
+      const Stmt *Body = FD->getBody();
+
+      if (FuncBegin.isInvalid() || Body->getBeginLoc().isInvalid()) {
+        return;
+      }
+
+      // 関数宣言の出力
+      SourceLocation DeclLoc = SM.getFileLoc(FuncBegin);
       SourceRange DeclRange(FuncBegin,
                             Body->getBeginLoc().getLocWithOffset(-1));
-      bool Invalid;
       StringRef DeclText = Lexer::getSourceText(
           CharSourceRange::getCharRange(DeclRange), SM, LangOpts, &Invalid);
-      if (!Invalid)
+      if (!Invalid) {
+        llvm::outs() << "\n";
+        printLineDirective(DeclLoc);
         llvm::outs() << DeclText << "\n";
-    }
+      }
 
-    // 関数本体の出力
-    SourceLocation BodyBeginLoc = SM.getFileLoc(Body->getBeginLoc());
-    SourceLocation BodyEndLoc = SM.getFileLoc(Body->getEndLoc());
-    bool Invalid;
-    StringRef BodyText = Lexer::getSourceText(
-        CharSourceRange::getTokenRange(SourceRange(BodyBeginLoc, BodyEndLoc)),
-        SM, LangOpts, &Invalid);
-    if (!Invalid) {
+      // 関数本体の出力
+      SourceLocation BodyBeginLoc = SM.getFileLoc(Body->getBeginLoc());
+      SourceLocation BodyEndLoc = SM.getFileLoc(Body->getEndLoc());
+      StringRef BodyText = Lexer::getSourceText(
+          CharSourceRange::getTokenRange(SourceRange(BodyBeginLoc, BodyEndLoc)),
+          SM, LangOpts, &Invalid);
+      if (!Invalid) {
+        SmallVector<StringRef, 16> Lines;
+        BodyText.split(Lines, '\n');
+
+        for (auto &Line : Lines) {
+          if (Line.trim().empty()) {
+            llvm::outs() << Line << "\n";
+            continue;
+          }
+
+          printLineDirective(BodyBeginLoc);
+          llvm::outs() << Line << "\n";
+
+          BodyBeginLoc =
+              BodyBeginLoc.getLocWithOffset(Line.size() + 1); // 次行に進める
+        }
+      }
+    } else {
+      SourceLocation FuncBegin = FD->getBeginLoc();
+      SourceLocation FuncEnd = FD->getEndLoc();
+
+      if (FuncBegin.isInvalid() || FuncBegin.isInvalid()) {
+        return;
+      }
+
+      SourceLocation DeclLineIter = SM.getFileLoc(FuncBegin);
+      SourceLocation DeclLineEnd = SM.getFileLoc(FuncEnd);
+      bool Invalid;
+      StringRef DeclText =
+          Lexer::getSourceText(CharSourceRange::getTokenRange(
+                                   SourceRange(DeclLineIter, DeclLineEnd)),
+                               SM, LangOpts, &Invalid);
+      if (Invalid) {
+        return;
+      }
+
       SmallVector<StringRef, 16> Lines;
-      BodyText.split(Lines, '\n');
+      DeclText.split(Lines, '\n');
 
       for (auto &Line : Lines) {
-        // 空行はそのまま出す
+        llvm::outs() << "\n";
+
         if (Line.trim().empty()) {
           llvm::outs() << Line << "\n";
           continue;
         }
-        // 行ごとに #line を振る
-        unsigned LineNo = SM.getSpellingLineNumber(BodyBeginLoc);
-        llvm::outs() << "#line " << LineNo << " \""
-                     << SM.getFilename(BodyBeginLoc) << "\"\n";
-        llvm::outs() << Line << "\n";
-        BodyBeginLoc =
-            BodyBeginLoc.getLocWithOffset(Line.size() + 1); // 次行に進める
+
+        printLineDirective(DeclLineIter);
+        llvm::outs() << Line;
+
+        DeclLineIter = DeclLineIter.getLocWithOffset(Line.size() + 1);
       }
+      llvm::outs() << ";\n";
     }
   }
 };
