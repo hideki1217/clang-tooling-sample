@@ -18,14 +18,19 @@ for DIR in "${INCLUDE_DIRS[@]}"; do
     INCLUDE_FLAGS=("${INCLUDE_DIRS[@]}" "-I" "$DIR")
 done
 
+BINARY_DIR=$(realpath "./build")
+
+GENERATED_SRC_DIR="${BINARY_DIR}/genetated_src"
+rm -rf "$GENERATED_SRC_DIR"
+mkdir -p "$GENERATED_SRC_DIR"
+
 for SRC in "${SOURCES[@]}"; do 
     SRC="$(realpath "$SRC")"
+    SRC_NAME="$(basename "$SRC")"
 
     # Generate Meta data
-    GENERATE_META_DATA="./build/my-annotation-matcher"
-    META_DATA_PATH="${SRC%.*}.meta.cpp"
-
-    echo "${GENERATE_META_DATA} ${SRC} -out ${META_DATA_PATH} -- ${INCLUDE_FLAGS}"
-
+    GENERATE_META_DATA="${BINARY_DIR}/my-annotation-matcher"
+    META_DATA_PATH="${GENERATED_SRC_DIR}/${SRC_NAME%.*}.meta.cpp"
     ${GENERATE_META_DATA} ${SRC} -out ${META_DATA_PATH} -- ${INCLUDE_FLAGS}
 done
+

@@ -1,6 +1,11 @@
 #pragma once
 
-#define __global__ __attribute__((annotate("special")))
+#ifdef __clang__
+#define __global__ extern "C" __attribute__((annotate("special")))
 #define __device__
+#else
+#define __global__ extern "C"
+#define __device__
+#endif
 
-__global__ extern int add(int x, int y);
+__global__ int add(int x, int y);

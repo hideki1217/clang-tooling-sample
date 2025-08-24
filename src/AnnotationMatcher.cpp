@@ -35,15 +35,17 @@ public:
 
             unsigned numArgs = FD->getNumParams();
             std::vector<uint64_t> sizes;
+            std::vector<uint64_t> aligns;
 
             for (unsigned i = 0; i < numArgs; i++) {
               const ParmVarDecl *Param = FD->getParamDecl(i);
               QualType QT = Param->getType();
-              CharUnits sz = Context->getTypeSizeInChars(QT);
-              sizes.push_back(sz.getQuantity());
+
+              sizes.push_back(Context->getTypeSizeInChars(QT).getQuantity());
+              aligns.push_back(Context->getTypeAlignInChars(QT).getQuantity());
             }
 
-            generateMetadataFile(FD->getNameAsString(), numArgs, sizes);
+            generateMetadataFile(FD->getNameAsString(), numArgs, sizes, aligns);
           }
         }
       }
@@ -51,7 +53,8 @@ public:
   }
 
   void generateMetadataFile(const std::string &funcName, unsigned numArgs,
-                            const std::vector<uint64_t> &sizes) {
+                            const std::vector<uint64_t> &sizes,
+                            const std::vector<uint64_t> &aligns) {
     std::error_code EC;
     llvm::raw_fd_ostream out(output_file.string(), EC,
                              llvm::sys::fs::OF_Append);
@@ -63,6 +66,13 @@ public:
       if (i)
         out << ", ";
       out << sizes[i];
+    }
+    out << "};\n";
+    out << "  unsigned " << funcName << "_arg_aligns[" << numArgs << "] = {";
+    for (unsigned i = 0; i < numArgs; i++) {
+      if (i)
+        out << ", ";
+      out << aligns[i];
     }
     out << "};\n";
     out << "}\n";

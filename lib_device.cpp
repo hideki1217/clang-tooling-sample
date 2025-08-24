@@ -1,4 +1,4 @@
-#include <iostream>
+#include <cstdio>
 
 #include "lib.hpp"
 
@@ -16,11 +16,4 @@ __global__ int muladd(int n, int *x, int *y) {
     reg = add(reg, mul(x[i], y[i]));
   }
   return reg;
-}
-
-int main() {
-  int x = 10;
-  int y = 3;
-  std::cout << x << " + " << y << "=" << add(x, y) << "\n";
-  std::cout << x << " - " << y << "=" << sub(x, y) << "\n";
 }
